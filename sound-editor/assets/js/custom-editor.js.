@@ -1,21 +1,23 @@
 let originalAudioURL = null;
+let fakePeaks = null;
+
 let mediaRecorder = null;
 let audioChunks = [];
-let player;
-let fakePeaks = null;
 
 var tag = document.createElement('script');
 tag.src = "https://www.youtube.com/iframe_api";
 var firstScriptTag = document.getElementsByTagName('script')[0];
 firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
+var player;
+
 function onYouTubeIframeAPIReady() {
     player = new YT.Player('youtube-player', {
         height: '0',
         width: '0',
         videoId: '',
-        playerVars: { 'autoplay': 1, 'controls': 0 },
-        events: { 'onReady': onPlayerReady }
+        playerVars: { autoplay: 1, controls: 0 },
+        events: { onReady: onPlayerReady }
     });
 }
 
@@ -38,13 +40,12 @@ function playSong(videoId) {
     fakePeaks = new Float32Array(samples).map(() => Math.random() * 2 - 1);
 
     popupWaveSurfer.empty();
-
     const tmpCtx = new AudioContext();
     const fakeBuf = tmpCtx.createBuffer(1, fakePeaks.length, tmpCtx.sampleRate);
     fakeBuf.copyToChannel(fakePeaks, 0, 0);
     const wavBlob = bufferToWave(fakeBuf);
-
     popupWaveSurfer.loadBlob(wavBlob);
+
     document.getElementById("trim-popup").style.display = 'block';
     document.getElementById("popup-playpause").disabled = false;
     document.getElementById("popup-trim-do").disabled = false;
@@ -74,7 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
         height: 150,
         responsive: true,
         normalize: true,
-        plugins: [ WaveSurfer.regions.create({ dragSelection: true, slop: 5 }) ]
+        plugins: [WaveSurfer.regions.create({ dragSelection: true, slop: 5 })]
     });
 
     window.popupWaveSurfer = WaveSurfer.create({
@@ -88,11 +89,7 @@ document.addEventListener('DOMContentLoaded', function () {
         height: 120,
         responsive: true,
         normalize: true,
-        plugins: [ WaveSurfer.regions.create({ dragSelection: true, slop: 5 }) ]
-    });
-
-    popupWaveSurfer.on('region-created', region => {
-        // region created, used for trimming
+        plugins: [WaveSurfer.regions.create({ dragSelection: true, slop: 5 })]
     });
 
     document.getElementById("upload-audio")?.addEventListener("change", function (event) {
@@ -100,6 +97,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (!file) return;
 
         document.getElementById("trim-popup").style.display = "block";
+
         try { popupWaveSurfer.empty(); } catch(e) {}
         try { popupWaveSurfer.clearRegions(); } catch(e) {}
         try { popupWaveSurfer.drawer && popupWaveSurfer.drawer.clear(); } catch(e) {}
@@ -139,14 +137,13 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('start-recording').style.display = "none";
             document.getElementById('stop-recording').style.display = "block";
         } catch (error) {
-            alert("Check microphone permissions.");
+            alert("Microphone access denied or error.");
         }
     });
 
     document.getElementById('stop-recording')?.addEventListener('click', () => {
         if (!mediaRecorder) return;
         mediaRecorder.stop();
-
         mediaRecorder.onstop = () => {
             const blob = new Blob(audioChunks, { type: 'audio/wav' });
             const audioUrl = URL.createObjectURL(blob);
@@ -159,7 +156,6 @@ document.addEventListener('DOMContentLoaded', function () {
             const audio = new Audio();
             audio.src = audioUrl;
             audio.crossOrigin = "anonymous";
-
             audio.addEventListener("canplaythrough", () => {
                 try {
                     popupWaveSurfer.load(audio);
@@ -203,7 +199,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 setTimeout(() => player.pauseVideo(), (endTime - startTime) * 1000);
             }
         } else {
-            alert("Enter valid times.");
+            alert("Invalid time values.");
         }
     });
 
@@ -243,10 +239,11 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     wavesurfer.on('ready', function () {
-        let timeline = Object.assign(document.createElement("div"), {
-            id: "wave-timeline",
-            style: "width: 100%; text-align: center; margin-top: 5px;"
-        });
+        let timeline = document.createElement("div");
+        timeline.id = "wave-timeline";
+        timeline.style.width = "100%";
+        timeline.style.textAlign = "center";
+        timeline.style.marginTop = "5px";
         document.querySelector("#waveform").appendChild(timeline);
         let duration = wavesurfer.getDuration();
         let markers = "";
@@ -259,32 +256,14 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById("playPauseBtn")?.addEventListener("click", function () {
         wavesurfer.playPause();
     });
-
-    window.popupReadyBuffer = null;
-    popupWaveSurfer.on("ready", () => {
-        let tryCount = 0;
-        const checkBufferInterval = setInterval(() => {
-            tryCount++;
-            if (popupWaveSurfer.backend && popupWaveSurfer.backend.buffer) {
-                popupReadyBuffer = popupWaveSurfer.backend.buffer;
-                document.getElementById("popup-playpause").disabled = false;
-                document.getElementById("popup-trim-do").disabled = false;
-                clearInterval(checkBufferInterval);
-            }
-            if (tryCount > 10) {
-                clearInterval(checkBufferInterval);
-            }
-        }, 300);
-    });
 });
 
 function searchYouTubeSong(query) {
     const apiKey = ytSettings.apiKey;
-    const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoCategoryId=10&key=${apiKey}`;
-    fetch(apiUrl)
+    fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&videoCategoryId=10&key=${apiKey}`)
         .then(response => response.json())
         .then(data => displaySongResults(data.items))
-        .catch(error => console.error('YouTube search error:', error));
+        .catch(() => {});
 }
 
 function displaySongResults(songs) {
@@ -294,12 +273,8 @@ function displaySongResults(songs) {
     songs.forEach(song => {
         const songElement = document.createElement('div');
         songElement.classList.add('song-item');
-        songElement.innerHTML = `
-            <p>${song.snippet.title}</p>
-            <button class="play-btn">Play</button>
-        `;
-        songElement.querySelector('.play-btn')
-                   .addEventListener('click', () => playSong(song.id.videoId));
+        songElement.innerHTML = `<p>${song.snippet.title}</p><button class="play-btn">Play</button>`;
+        songElement.querySelector('.play-btn').addEventListener('click', () => playSong(song.id.videoId));
         resultsContainer.appendChild(songElement);
     });
 }
@@ -311,7 +286,7 @@ function loadAudioToWaveform(audioUrl) {
 
 function trimAudio(startTime, endTime) {
     if (!wavesurfer.backend.buffer) {
-        alert("Audio not loaded.");
+        alert("No audio loaded.");
         return;
     }
     if (startTime >= endTime) {
@@ -323,25 +298,20 @@ function trimAudio(startTime, endTime) {
         document.getElementById("resetEditor").style.display = "block";
         if (typeof updateBars === 'function') updateBars();
     });
-
     const originalBuffer = wavesurfer.backend.buffer;
     const sr = originalBuffer.sampleRate;
     const s0 = Math.floor(startTime * sr);
     const s1 = Math.floor(endTime * sr);
     const len = s1 - s0;
-
     const trimmedBuffer = new AudioContext().createBuffer(originalBuffer.numberOfChannels, len, sr);
     for (let ch = 0; ch < originalBuffer.numberOfChannels; ch++) {
-        const data = originalBuffer.getChannelData(ch).slice(s0, s1);
-        trimmedBuffer.copyToChannel(data, ch, 0);
+        trimmedBuffer.copyToChannel(originalBuffer.getChannelData(ch).slice(s0, s1), ch, 0);
     }
-
     const blob = bufferToWave(trimmedBuffer);
     const trimmedUrl = URL.createObjectURL(blob);
     wavesurfer.empty();
     wavesurfer.load(trimmedUrl);
     wavesurfer.once('ready', () => wavesurfer.play());
-
     document.getElementById('trimmed-section').innerHTML = `<p>Trimmed: ${startTime}s – ${endTime}s</p>`;
 }
 
@@ -352,13 +322,11 @@ function bufferToWave(abuffer) {
     let channels = 1;
     let sampleRate = abuffer.sampleRate;
     let offset = 0;
-
     function writeString(s) {
         for (let i = 0; i < s.length; i++) {
             view.setUint8(offset++, s.charCodeAt(i));
         }
     }
-
     writeString("RIFF");
     view.setUint32(offset, 36 + abuffer.length * 2, true); offset += 4;
     writeString("WAVE");
@@ -372,7 +340,6 @@ function bufferToWave(abuffer) {
     view.setUint16(offset, 16, true); offset += 2;
     writeString("data");
     view.setUint32(offset, abuffer.length * 2, true); offset += 4;
-
     let channelData = abuffer.getChannelData(0);
     for (let i = 0; i < channelData.length; i++) {
         let sample = Math.max(-1, Math.min(1, channelData[i]));
@@ -413,18 +380,15 @@ async function trimPopupAudio(startTime, endTime) {
         alert("Start time must be less than end time.");
         return;
     }
-
     const buf = popup.backend.buffer;
     const sr = buf.sampleRate;
     const s0 = Math.floor(startTime * sr);
     const s1 = Math.floor(endTime * sr);
     const len = s1 - s0;
-
     const trimmedBuf = new AudioContext().createBuffer(buf.numberOfChannels, len, sr);
     for (let ch = 0; ch < buf.numberOfChannels; ch++) {
         trimmedBuf.copyToChannel(buf.getChannelData(ch).slice(s0, s1), ch, 0);
     }
-
     function bufferToPeaks(audioBuffer, totalBars) {
         const channelData = audioBuffer.getChannelData(0);
         const blockSize = Math.floor(channelData.length / totalBars);
@@ -440,58 +404,37 @@ async function trimPopupAudio(startTime, endTime) {
         }
         return peaks;
     }
-
     function normalizeOrFillPeaks(peaks, totalBars) {
         let result = [...peaks];
-        while (result.length < totalBars) {
-            result.push(Math.random() * 0.5 + 0.2);
-        }
+        while (result.length < totalBars) result.push(Math.random() * 0.5 + 0.2);
         return result;
     }
-
     const controls = window.getWaveControls?.();
     if (!controls) {
         alert("Wave controls not available.");
         return;
     }
-
-    const c1Safe = (typeof barColor1Control !== 'undefined' ? barColor1Control.value : null) || '#000000';
-    const c2Safe = (typeof barColor2Control !== 'undefined' ? barColor2Control.value : null) || '#777777';
-    const c3Safe = (typeof barColor3Control !== 'undefined' ? barColor3Control.value : null) || '#BBBBBB';
-
-    function safeValue(val, fallback) {
-        return (typeof val === 'number' && isFinite(val) && val > 0) ? val : fallback || (Math.random() * 0.5 + 0.2);
-    }
-
-    const barThicknessSafe = safeValue(controls.barThickness, 2);
-    const barSpacingSafe = safeValue(controls.barSpacing, 2);
-    const barHeightSafe = safeValue(controls.barHeight, 50);
-    const rotationAngleSafe = safeValue(controls.rotationAngle, 0);
-
+    const c1 = (typeof barColor1Control !== 'undefined' ? barColor1Control.value : null) || '#000000';
+    const c2 = (typeof barColor2Control !== 'undefined' ? barColor2Control.value : null) || '#777777';
+    const c3 = (typeof barColor3Control !== 'undefined' ? barColor3Control.value : null) || '#BBBBBB';
+    const safe = (val, fallback) => (typeof val === 'number' && isFinite(val) && val > 0) ? val : (fallback || 0.5);
+    const barThickness = safe(controls.barThickness, 2);
+    const barSpacing = safe(controls.barSpacing, 2);
+    const barHeight = safe(controls.barHeight, 50);
+    const rotationAngle = safe(controls.rotationAngle, 0);
     const canvas = document.getElementById('waveCanvas');
     const ctx = canvas.getContext('2d');
-    const totalBars = Math.floor(canvas.width / (barThicknessSafe + barSpacingSafe));
-
+    const totalBars = Math.floor(canvas.width / (barThickness + barSpacing));
     let peaks = bufferToPeaks(trimmedBuf, totalBars);
     peaks = normalizeOrFillPeaks(peaks, totalBars);
-    const safePeaks = peaks.map(p => safeValue(p, 0.2));
-
-    templatePeaksMap["trimmed"] = safePeaks;
-    currentTemplateName = "trimmed";
     window.currentTrimPeaks = peaks;
-
     drawWave(
-        ctx,
-        canvas,
-        barThicknessSafe,
-        barSpacingSafe,
-        barHeightSafe,
-        rotationAngleSafe,
+        ctx, canvas,
+        barThickness, barSpacing, barHeight, rotationAngle,
         controls.currentWaveShape,
         controls.currentWaveStyle,
-        safePeaks
+        peaks.map(p => (typeof p === 'number' && p > 0) ? p : 0.2)
     );
-
     try { popup.stop(); } catch(e) {}
     try { popup.clearRegions(); } catch(e) {}
     try { popup.empty(); } catch(e) {}
